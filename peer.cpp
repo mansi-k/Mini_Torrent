@@ -1,40 +1,12 @@
-#include <iostream>
-#include <bits/stdc++.h>
-#include <pthread.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdlib.h>
-
-#define BUFFER_SIZE 64
-#define QLIMIT 32
-#define CHUNK_SIZE 1024
+#include "common.h"
 
 pthread_t tid_ps;
 pthread_t tid_pr;
 
-using namespace std;
-
 pair<string,int> THIS_PEER_SOCK;
 vector<pair<string,int>> TRACK_SOCK_VEC;
-
-pair<string,int> split_address(string addr) {
-    int pos = addr.find(":");
-    pair<string,int> sock;
-    sock.first = addr.substr(0,pos);
-    sock.second = stoi(addr.substr(pos+1,addr.length()));
-    return sock;
-}
-
-vector<string> split_string(string s,char d) {
-    vector<string> v;
-    stringstream ss(s);
-    string temp;
-    while(getline(ss,temp,d)) {
-        v.push_back(temp);
-    }
-    return v;
-}
+char MSG_BUFF[BUFFER_SIZE];
+string CURR_USER;
 
 void* serveRequest(void *args) {
     
@@ -45,8 +17,7 @@ void* peerServer(void *args) {
     struct sockaddr_in serverSock;
 //    int newsock,i;
     int socketfd = socket(PF_INET, SOCK_STREAM, 0);
-    if(socketfd < 0)	//tcp -sock_stream  af_inet - ipv4
-    {
+    if(socketfd < 0) {
         perror("socket failed\n");
         exit(1);
     }
@@ -54,17 +25,14 @@ void* peerServer(void *args) {
     memset(&serverSock, '\0', sizeof(serverSock));
     serverSock.sin_family = AF_INET;
     serverSock.sin_addr.s_addr = inet_addr(THIS_PEER_SOCK.first.c_str());
-    unsigned int number = (unsigned short) THIS_PEER_SOCK.second;
-//    strcpy(port,argv[2]);
-//    cout<<port;
-    serverSock.sin_port = htons(number);
+    unsigned int portno = (unsigned short) THIS_PEER_SOCK.second;
+    serverSock.sin_port = htons(portno);
     if(bind(socketfd,(struct sockaddr*) &serverSock, sizeof(serverSock)) < 0) {
-        perror("Error in binding\n");
+        perror("\nError in binding ");
         exit(1);
     }
-//    cout<<"Bind Successful\n";
     if(listen(socketfd,QLIMIT) < 0) {
-        perror("error in listen\n");
+        perror("\nError in listen ");
         exit(1);
     }
     struct sockaddr_in client_addr;
@@ -74,14 +42,14 @@ void* peerServer(void *args) {
     {
         //send(newsock,str,strlen(str),0);
         if(pthread_create(&tid_pr,NULL,serveRequest,&client_sock)!=0) {
-            perror("Failed to create server request service thread\n");
+            perror("\nFailed to create server request service thread ");
         }
     }
     pthread_exit(NULL);
 }
 
 int main(int argc,char ** argv) {
-    if(argc!=3) {
+    if(argc<3) {
         cout << "Usage : peer.cpp <peer IP:Port> <tracker_file>" << endl;
         return 0;
     }
@@ -96,19 +64,17 @@ int main(int argc,char ** argv) {
 //        cout << TRACK_SOCK_VEC[i].first << " : " << TRACK_SOCK_VEC[i].second << endl;
 //        i++;
     }
-//    thread serverThread(peerServer);
-//    serverThread.detach();
-
-//    pthread_create(&tid1,NULL,peerServer,NULL);
-    if(pthread_create(&tid_ps, NULL, peerServer, NULL)!= 0) {
-        perror("Failed to create server thread\n");
-    }
+//    if(pthread_create(&tid_ps, NULL, peerServer, NULL)!= 0) {
+//        perror("Failed to create server thread\n");
+//    }
 
     int clientSock = socket(PF_INET,SOCK_STREAM, 0);
     if(clientSock < 0) {
-        perror("Failed to create client socket\n");
+        perror("\nFailed to create client socket ");
         exit(1);
     }
+
+//    cout << getpeername()
 
     struct sockaddr_in trackerSock;
     memset(&trackerSock, '\0', sizeof(trackerSock));
@@ -117,19 +83,74 @@ int main(int argc,char ** argv) {
     trackerSock.sin_family = AF_INET;
 
     if(connect(clientSock,(struct sockaddr*) &trackerSock,sizeof(trackerSock)) < 0) {
-        perror("Failed to connect to tracker\n");
+        perror("\nFailed to connect to tracker");
     }
+//    string send_msg;
+//    cin >> send_msg;
+//    if(send(clientSock,send_msg.c_str(),send_msg.length()+1,0) < 0) {
+//        perror("Send failed");
+//    }
+//    recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+//    string msg = string(MSG_BUFF);
+//    cout << msg << endl;
 
     string rqst;
     while(true) {
         getline(cin,rqst);
+        cout << rqst << endl;
         vector<string> rqst_vec = split_string(rqst,' ');
         string cmd = rqst_vec[0];
+        cout << cmd << "." <<  endl;
         if(cmd == "create_user") {
-
+            if(rqst_vec.size()<3) {
+                cout << "Usage : create_user <username> <password>" << endl;
+                continue;
+            }
+            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2];
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            string rcvd_msg = string(MSG_BUFF);
+            cout << rcvd_msg << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(cmd == "login") {
+            if(CURR_USER!="") {
+                cout << "You are already Logged in" << endl;
+                continue;
+            }
+            if(rqst_vec.size()<3) {
+                cout << "Usage : login <username> <password>" << endl;
+                continue;
+            }
+            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2];
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            string rcvdmsg = string(MSG_BUFF);
+            cout << rcvdmsg << endl;
+            if(rcvdmsg == "Login success\n")
+                CURR_USER = rqst_vec[1];
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(cmd == "logout") {
+            if(CURR_USER=="") {
+                cout << "You are not logged in" << endl;
+                continue;
+            }
+            string cmd_params = rqst_vec[0]+"|"+CURR_USER;
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            CURR_USER = "";
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(cmd == "exit") {
-            return 0;
+            string cmd_params = rqst_vec[0]+"|"+CURR_USER;
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            CURR_USER = "";
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            break;
         }
     }
     return 0;
