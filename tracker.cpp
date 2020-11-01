@@ -11,7 +11,7 @@ struct GroupStruct {
     string gid;
     string owner;
     vector<string> members;
-    vector<string> files;
+//    vector<string> files;
 };
 struct FileStruct {
     string sha;
@@ -20,7 +20,7 @@ struct FileStruct {
     map<pair<string,int>,string> leechers; //<peer,path>
 };
 map<string,GroupStruct> GROUP_INFO;
-map<pair<string,string>,FileStruct> FILE_INFO;  //<filename,gid>
+map<pair<string,string>,FileStruct> FILE_INFO;  //<gid,filename>
 
 void setSocket(string trkfile) {
     fstream fs(trkfile,ios::in);
@@ -152,6 +152,29 @@ string handle_list_groups(string user) {
         for(auto grp : GROUP_INFO) {
             status += grp.first+"\t";
         }
+        status += "\n";
+    }
+    return status;
+}
+
+string handle_list_files(string gid, string user) {
+    string status;
+    if(GROUP_INFO.find(gid) == GROUP_INFO.end()) {
+        status = "Group "+gid+" does not exist\n";
+    }
+    else if(find(GROUP_INFO[gid].members.begin(),GROUP_INFO[gid].members.end(),user)==GROUP_INFO[gid].members.end()) {
+        status = "You are not a member of group "+gid+"\n";
+    }
+    else {
+        for(auto fg : FILE_INFO) {
+            if(fg.first.first == gid) {
+                status += fg.first.second + "\t";
+            }
+        }
+        if(status=="") {
+            status = "No files shared";
+        }
+        status += "\n";
     }
     return status;
 }
@@ -203,6 +226,12 @@ void* serveRequest(void *args) {
         else if(rcvd_cmd[0] == "list_groups") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_list_groups(rcvd_cmd[1]);
+            send(client_sock,send_msg.c_str(),send_msg.length(),0);
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(rcvd_cmd[0] == "list_files") {
+            cout << rcvd_cmd[0] << " request" << endl;
+            send_msg = handle_list_files(rcvd_cmd[1],rcvd_cmd[2]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
