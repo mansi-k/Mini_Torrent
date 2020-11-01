@@ -6,7 +6,7 @@ pthread_t tid_pr;
 pair<string,int> THIS_PEER_SOCK;
 vector<pair<string,int>> TRACK_SOCK_VEC;
 char MSG_BUFF[BUFFER_SIZE];
-string CURR_USER;
+string CURR_USER="";
 
 void* serveRequest(void *args) {
     
@@ -203,6 +203,40 @@ int main(int argc,char ** argv) {
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(cmd == "list_files") {
+            if(rqst_vec.size()<2) {
+                cout << "Usage : list_files <group>" << endl;
+                continue;
+            }
+            if(CURR_USER=="") {
+                cout << "You are not logged in" << endl;
+                continue;
+            }
+            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+CURR_USER;
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(cmd == "stop_share") {
+            if(rqst_vec.size()<3) {
+                cout << "Usage : stop_share <group> <filename>" << endl;
+                continue;
+            }
+            if(CURR_USER=="") {
+                cout << "You are not logged in" << endl;
+                continue;
+            }
+            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+CURR_USER;
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(cmd == "leave_group") {
+            if(rqst_vec.size()<2) {
+                cout << "Usage : leave_group <groupname>" << endl;
+                continue;
+            }
             if(CURR_USER=="") {
                 cout << "You are not logged in" << endl;
                 continue;
@@ -214,6 +248,9 @@ int main(int argc,char ** argv) {
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(cmd == "exit") {
+            if(CURR_USER=="") {
+                break;
+            }
             string cmd_params = rqst_vec[0]+"|"+CURR_USER;
             send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
@@ -221,6 +258,9 @@ int main(int argc,char ** argv) {
             CURR_USER = "";
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
             break;
+        }
+        else {
+            cout << "Wrong command" << endl;
         }
     }
     return 0;
