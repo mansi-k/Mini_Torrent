@@ -202,6 +202,17 @@ int main(int argc,char ** argv) {
             cout << MSG_BUFF << endl;
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
+        else if(cmd == "list_files") {
+            if(CURR_USER=="") {
+                cout << "You are not logged in" << endl;
+                continue;
+            }
+            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+CURR_USER;
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
         else if(cmd == "exit") {
             string cmd_params = rqst_vec[0]+"|"+CURR_USER;
             send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
