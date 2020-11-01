@@ -64,9 +64,9 @@ int main(int argc,char ** argv) {
 //        cout << TRACK_SOCK_VEC[i].first << " : " << TRACK_SOCK_VEC[i].second << endl;
 //        i++;
     }
-//    if(pthread_create(&tid_ps, NULL, peerServer, NULL)!= 0) {
-//        perror("Failed to create server thread\n");
-//    }
+    if(pthread_create(&tid_ps, NULL, peerServer, NULL)!= 0) {
+        perror("Failed to create server thread\n");
+    }
 
     int clientSock = socket(PF_INET,SOCK_STREAM, 0);
     if(clientSock < 0) {
@@ -97,10 +97,10 @@ int main(int argc,char ** argv) {
     string rqst;
     while(true) {
         getline(cin,rqst);
-        cout << rqst << endl;
+//        cout << rqst << endl;
         vector<string> rqst_vec = split_string(rqst,' ');
         string cmd = rqst_vec[0];
-        cout << cmd << "." <<  endl;
+//        cout << cmd << "." <<  endl;
         if(cmd == "create_user") {
             if(rqst_vec.size()<3) {
                 cout << "Usage : create_user <username> <password>" << endl;
@@ -114,12 +114,12 @@ int main(int argc,char ** argv) {
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(cmd == "login") {
-            if(CURR_USER!="") {
-                cout << "You are already Logged in" << endl;
-                continue;
-            }
             if(rqst_vec.size()<3) {
                 cout << "Usage : login <username> <password>" << endl;
+                continue;
+            }
+            if(CURR_USER!="") {
+                cout << "You are already Logged in" << endl;
                 continue;
             }
             string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2];
@@ -141,6 +141,65 @@ int main(int argc,char ** argv) {
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
             cout << MSG_BUFF << endl;
             CURR_USER = "";
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(cmd == "create_group") {
+            if(rqst_vec.size()<2) {
+                cout << "Usage : create_group <groupname>" << endl;
+                continue;
+            }
+            if(CURR_USER=="") {
+                cout << "You are not logged in" << endl;
+                continue;
+            }
+            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+CURR_USER;
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(cmd == "join_group") {
+            if(rqst_vec.size()<2) {
+                cout << "Usage : join_group <groupname>" << endl;
+                continue;
+            }
+            if(CURR_USER=="") {
+                cout << "You are not logged in" << endl;
+                continue;
+            }
+            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+CURR_USER;
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(cmd == "upload_file") {
+            if(rqst_vec.size()<3) {
+                cout << "Usage : upload_file <filepath> <group>" << endl;
+                continue;
+            }
+            if(CURR_USER=="") {
+                cout << "You are not logged in" << endl;
+                continue;
+            }
+            struct stat filestatus;
+            stat(rqst_vec[1].c_str(), &filestatus);
+            long total_size = filestatus.st_size;
+            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+CURR_USER+"|"+to_string(total_size);
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(cmd == "list_groups") {
+            if(CURR_USER=="") {
+                cout << "You are not logged in" << endl;
+                continue;
+            }
+            string cmd_params = rqst_vec[0]+"|"+CURR_USER;
+            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(cmd == "exit") {
