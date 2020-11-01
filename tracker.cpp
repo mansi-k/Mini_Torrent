@@ -179,6 +179,50 @@ string handle_list_files(string gid, string user) {
     return status;
 }
 
+string handle_stop_share(string gid, string file, string ipadr, string port, string user) {
+    string status;
+    if(GROUP_INFO.find(gid)==GROUP_INFO.end()) {
+        status = "Group "+gid+" does not exist\n";
+    }
+    else if(find(GROUP_INFO[gid].members.begin(),GROUP_INFO[gid].members.end(),user)==GROUP_INFO[gid].members.end()) {
+        status = "You are not a member of group "+gid+"\n";
+    }
+    else {
+        pair<string,string> fg = make_pair(gid,file);
+        auto itr = FILE_INFO.find(fg);
+        if(itr == FILE_INFO.end()) {
+            status = "File "+file+" is not shared in group "+gid+"\n";
+        }
+        else {
+            int portno = stoi(port);
+            pair<string,int> psock = make_pair(ipadr,portno);
+            bool flag = false;
+            if(itr->second.seeders.find(psock) != itr->second.seeders.end()) {
+                flag = true;
+                itr->second.seeders.erase(psock);
+            }
+            if(itr->second.leechers.find(psock) != itr->second.leechers.end()) {
+                flag = true;
+                itr->second.leechers.erase(psock);
+            }
+            if(itr->second.seeders.empty() && itr->second.leechers.empty()) {
+                FILE_INFO.erase(itr);
+            }
+            if(!flag) {
+                status = "You do not have file "+file+"\n";
+            }
+            else {
+                status = "File "+file+" is now unshared\n";
+            }
+        }
+    }
+    return status;
+}
+
+string handle_leave_group(string gid, string user) {
+
+}
+
 void* serveRequest(void *args) {
 //    cout << "here" << endl;
     int client_sock = *((int *)args);
@@ -232,6 +276,18 @@ void* serveRequest(void *args) {
         else if(rcvd_cmd[0] == "list_files") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_list_files(rcvd_cmd[1],rcvd_cmd[2]);
+            send(client_sock,send_msg.c_str(),send_msg.length(),0);
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(rcvd_cmd[0] == "stop_share") {
+            cout << rcvd_cmd[0] << " request" << endl;
+            send_msg = handle_stop_share(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4],rcvd_cmd[5]);
+            send(client_sock,send_msg.c_str(),send_msg.length(),0);
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(rcvd_cmd[0] == "leave_group") {
+            cout << rcvd_cmd[0] << " request" << endl;
+            send_msg = handle_leave_group(rcvd_cmd[1],rcvd_cmd[2]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
