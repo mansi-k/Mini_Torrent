@@ -5,6 +5,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <fstream>
+#include <sstream>
+#include <sys/stat.h>
+#include <cmath>
 
 #define BUFFER_SIZE 1024
 #define QLIMIT 32
