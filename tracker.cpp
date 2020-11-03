@@ -2,6 +2,7 @@
 
 #define PEERLIMIT 10
 
+pthread_t tid_fd;
 pair<string,int> THIS_TRACK_SOCK;
 pthread_t peer_TID[PEERLIMIT];
 char MSG_BUFF[BUFFER_SIZE];
@@ -22,11 +23,22 @@ struct GroupStruct {
 struct FileStruct {
     string sha;
     long totalchunks;
-    map<pair<string,int>,string> seeders;  //<peer,path>
-    map<pair<string,int>,string> leechers; //<peer,path>
+    map<pair<string,int>,string> seeders;  //<<ip,port>,path>
+    map<pair<string,int>,string> leechers; //<<ip,port>,path>
+};
+struct DownRqstStruct {
+    string uid;
+    string gid;
+    string ip;
+    int port;
+    string srcfile;
+    string destp;
 };
 map<string,GroupStruct> GROUP_INFO;
 map<pair<string,string>,FileStruct> FILE_INFO;  //<gid,filename>
+queue<DownRqstStruct> DOWN_RQST_Q;
+map<pair<string,pair<string,int>>,string> DOWN_RSPN;  //<filename,<ip,port>>
+
 
 void setSocket(string trkfile) {
     fstream fs(trkfile,ios::in);
@@ -34,6 +46,46 @@ void setSocket(string trkfile) {
     getline(fs,tadr);
     THIS_TRACK_SOCK = split_address(tadr);
     cout << THIS_TRACK_SOCK.first << " : " << THIS_TRACK_SOCK.second << endl;
+}
+
+void* fileDownloader(void *args) {
+    while(true) {
+        if(DOWN_RQST_Q.empty()) {
+            continue;
+        }
+        while(!DOWN_RQST_Q.empty()) {
+            DownRqstStruct dlrq = DOWN_RQST_Q.front();
+            DOWN_RQST_Q.pop();
+            int DlSock = socket(PF_INET,SOCK_STREAM, 0);
+            if(DlSock < 0) {
+                perror("\nFailed to create Downloader socket ");
+                exit(1);
+            }
+            pair<string,string> gf = make_pair(dlrq.gid,dlrq.srcfile);
+            map<pair<string,int>,vector<int>> active_peer_chunks;
+            for(auto sit=FILE_INFO[gf].seeders.begin();sit!=FILE_INFO[gf].seeders.end();sit++) {
+                for(auto apit=ACTIVE_PEERS.begin();apit!=ACTIVE_PEERS.end();apit++) {
+                    if(apit->second.ip == sit->first.first && apit->second.port == sit->first.second) {
+                        vector<int> chkvec;
+                        chkvec.resize(FILE_INFO[gf].totalchunks,0);
+                        active_peer_chunks[make_pair(dlrq.ip,dlrq.port)] = chkvec;
+                    }
+                }
+            }
+            for(auto lit=FILE_INFO[gf].leechers.begin();lit!=FILE_INFO[gf].leechers.end();lit++) {
+                for(auto apit=ACTIVE_PEERS.begin();apit!=ACTIVE_PEERS.end();apit++) {
+                    if(apit->second.ip == lit->first.first && apit->second.port == lit->first.second) {
+                        vector<int> chkvec;
+                        chkvec.resize(FILE_INFO[gf].totalchunks,0);
+                        active_peer_chunks[make_pair(dlrq.ip,dlrq.port)] = chkvec;
+                    }
+                }
+            }
+            for(auto apcit=active_peer_chunks.begin();apcit!=active_peer_chunks.end();apcit++) {
+                //connect with n request for chunk info
+            }
+        }
+    }
 }
 
 string handle_create_user(string user, string pswd, string ipadr, string portno) {
@@ -247,14 +299,34 @@ string handle_download_file(string gid, string fname, string destp, string ipadr
         if (itr == FILE_INFO.end()) {
             status = "File " + fname + " is not shared in group " + gid + "\n";
         }
-        //pthreadcall
+        else {
+            DownRqstStruct drs;
+            drs.uid = user;
+            drs.gid = gid;
+            drs.ip = ipadr;
+            drs.port = portno;
+            drs.srcfile = fname;
+            drs.destp = destp;
+            DOWN_RQST_Q.push(drs);
+            status = "File "+fname+" will be downloaded soon\n";
+        }
     }
+    return status;
+}
+
+string wait_for_download(string fname, string ipadr, int portno) {
+    pair<string,pair<string,int>> drfs = make_pair(fname,make_pair(ipadr,portno));
+    while(DOWN_RSPN.find(drfs) == DOWN_RSPN.end()) {
+        continue;
+    }
+    string status;
+    status = DOWN_RSPN[drfs];
+    return status;
 }
 
 void* serveRequest(void *args) {
 //    cout << "here" << endl;
     int client_sock = *((int *)args);
-
     while(true) {
         recv(client_sock, MSG_BUFF, BUFFER_SIZE, 0);
         vector<string> rcvd_cmd = split_string(MSG_BUFF, '|');
@@ -323,6 +395,8 @@ void* serveRequest(void *args) {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_download_file(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4],stoi(rcvd_cmd[5]),rcvd_cmd[6]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
+            send_msg = wait_for_download(rcvd_cmd[2],rcvd_cmd[4],stoi(rcvd_cmd[5]));
+            send(client_sock,send_msg.c_str(),send_msg.length(),0);
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "exit") {
@@ -344,6 +418,9 @@ int main(int argc,char ** argv) {
     if(argc<2) {
         cout << "Usage : tracker.cpp <tracker_file>" << endl;
         return 0;
+    }
+    if(pthread_create(&tid_fd, NULL, fileDownloader, NULL)!= 0) {
+        perror("Failed to create downloader thread\n");
     }
     setSocket(argv[1]);
     cout << "in server" << endl;
