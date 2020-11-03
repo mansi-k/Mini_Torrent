@@ -22,7 +22,7 @@ struct GroupStruct {
 };
 struct FileStruct {
     string sha;
-    long totalchunks;
+    int totalchunks;
     map<pair<string,int>,string> seeders;  //<<ip,port>,path>
     map<pair<string,int>,string> leechers; //<<ip,port>,path>
 };
@@ -49,6 +49,10 @@ void setSocket(string trkfile) {
 }
 
 void* fileDownloader(void *args) {
+
+}
+
+void* configDownload(void *args) {
     while(true) {
         if(DOWN_RQST_Q.empty()) {
             continue;
@@ -83,6 +87,53 @@ void* fileDownloader(void *args) {
             }
             for(auto apcit=active_peer_chunks.begin();apcit!=active_peer_chunks.end();apcit++) {
                 //connect with n request for chunk info
+                struct sockaddr_in peerSock;
+                memset(&peerSock, '\0', sizeof(peerSock));
+                peerSock.sin_addr.s_addr = inet_addr(apcit->first.first.c_str());
+                peerSock.sin_port = htons(apcit->first.second);
+                peerSock.sin_family = AF_INET;
+                if(connect(DlSock,(struct sockaddr*) &peerSock,sizeof(peerSock)) < 0) {
+                    perror("\nFailed to connect to tracker");
+                }
+                string send_msg = dlrq.gid+"|"+dlrq.srcfile;
+                memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+                send(DlSock,send_msg.c_str(),send_msg.length()+1,0);
+                recv(DlSock,MSG_BUFF,BUFFER_SIZE,0);
+                vector<string> rmsg = split_string(MSG_BUFF,'|');  //fpath,bitvec
+                apcit->second = split_bitvector(rmsg[1],';',FILE_INFO[gf].totalchunks);
+            }
+            // loop to choose chunks from each peer
+            map<pair<string,int>,vector<int>> chunks_from;
+            int ci=0;
+            int pcnt=0;
+            while(ci<FILE_INFO[gf].totalchunks-1) {
+                for(auto apcit=active_peer_chunks.begin();apcit!=active_peer_chunks.end();apcit++) {
+                    if(pcnt==active_peer_chunks.size() && apcit->second[ci]==0) {
+                        pair<string,pair<string,int>> p = make_pair(dlrq.srcfile,make_pair(dlrq.ip,dlrq.port));
+                        DOWN_RSPN[p] = "Chunk "+to_string(ci)+" is missing\n";
+                        break;
+                    }
+                    else if(apcit->second[ci]==0) {
+                        continue;
+                    }
+                    else {
+                        chunks_from[apcit->first].push_back(ci);
+                        ci++;
+                    }
+                }
+            }
+            struct DownlConfig {
+                DownRqstStruct down_rqst;
+                map<pair<string,int>,vector<int>> chunks_from;
+            } down_config;
+            down_config.down_rqst = dlrq;
+            down_config.chunks_from = chunks_from;
+            int d=0;
+            pthread_t downl_TID[chunks_from.size()];
+            for(auto cfit=chunks_from.begin();cfit!=chunks_from.end();cfit++) {
+                if (pthread_create(&downl_TID[d++], NULL, fileDownloader, &down_config) != 0) {
+                    perror("\nFailed to create server request service thread ");
+                }
             }
         }
     }
@@ -335,61 +386,61 @@ void* serveRequest(void *args) {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_create_user(rcvd_cmd[1], rcvd_cmd[2], rcvd_cmd[3], rcvd_cmd[4]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "login") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_login(rcvd_cmd[1], rcvd_cmd[2]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "logout") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_logout(rcvd_cmd[1]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "create_group") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_create_group(rcvd_cmd[1],rcvd_cmd[2]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "join_group") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_join_group(rcvd_cmd[1],rcvd_cmd[2]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "upload_file") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_upload_file(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4],rcvd_cmd[5],rcvd_cmd[6]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "list_groups") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_list_groups(rcvd_cmd[1]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "list_files") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_list_files(rcvd_cmd[1],rcvd_cmd[2]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "stop_share") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_stop_share(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4],rcvd_cmd[5]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "leave_group") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_leave_group(rcvd_cmd[1],rcvd_cmd[2]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "download_file") {
             cout << rcvd_cmd[0] << " request" << endl;
@@ -397,13 +448,13 @@ void* serveRequest(void *args) {
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
             send_msg = wait_for_download(rcvd_cmd[2],rcvd_cmd[4],stoi(rcvd_cmd[5]));
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "exit") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_logout(rcvd_cmd[1]);
             send(client_sock,send_msg.c_str(),BUFFER_SIZE,0);
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
             break;
         }
     }
@@ -419,7 +470,7 @@ int main(int argc,char ** argv) {
         cout << "Usage : tracker.cpp <tracker_file>" << endl;
         return 0;
     }
-    if(pthread_create(&tid_fd, NULL, fileDownloader, NULL)!= 0) {
+    if(pthread_create(&tid_fd, NULL, configDownload, NULL)!= 0) {
         perror("Failed to create downloader thread\n");
     }
     setSocket(argv[1]);
