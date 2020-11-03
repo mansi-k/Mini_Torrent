@@ -44,3 +44,13 @@ vector<int> split_bitvector(string s,char d, int totchunks) {
     }
     return v;
 }
+
+string bitvec_toString(vector<int> &v) {
+    string bitstr = to_string(*v.begin());
+    for(auto it=v.begin();it!=v.end(),i++) {
+        if(it == v.begin())
+            continue;
+        bitstr = ";"+to_string(*it);
+    }
+    return bitstr;
+}
