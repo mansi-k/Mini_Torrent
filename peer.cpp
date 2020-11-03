@@ -5,7 +5,7 @@ pthread_t tid_pr;
 
 struct ChunkStruct {
     string dpath;
-    set<int> fchunks;
+    vector<int> fchunks;
 };
 
 pair<string,int> THIS_PEER_SOCK;
@@ -45,11 +45,24 @@ void* peerServer(void *args) {
     struct sockaddr_in client_addr;
     socklen_t addr_len = sizeof(client_addr);
     int client_sock;
-    if(client_sock = accept(socketfd,(struct sockaddr*) &client_addr,&addr_len))
-    {
-        //send(newsock,str,strlen(str),0);
-        if(pthread_create(&tid_pr,NULL,serveRequest,&client_sock)!=0) {
-            perror("\nFailed to create server request service thread ");
+    while(true) {
+        if(client_sock = accept(socketfd, (struct sockaddr *) &client_addr, &addr_len)) {
+//        if(pthread_create(&tid_pr,NULL,serveRequest,&client_sock)!=0) {
+//            perror("\nFailed to create server request service thread ");
+//        }
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+            recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
+            vector<string> rmsg = split_string(MSG_BUFF,'|');
+            cout << "Request for gid="+rmsg[0]+" file="+rmsg[1] << endl;
+            pair<string,string> pgf = make_pair(rmsg[0],rmsg[1]);
+            string bvec = bitvec_toString(FILE_CHUNKS_INFO[pgf].fchunks);
+            send(client_sock,bvec.c_str(),bvec.length(),0);
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+            recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            rmsg = split_string(MSG_BUFF,'|');
+            vector<int> chunks_tosend = split_bitvector(rmsg[1],';',stoi(rmsg[0]));
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
     }
     pthread_exit(NULL);
@@ -204,7 +217,7 @@ int main(int argc,char ** argv) {
                 ChunkStruct chst;
                 chst.dpath = rqst_vec[1];
                 for(int i=0;i<totchunks;i++) {
-                    chst.fchunks.insert(i);
+                    chst.fchunks.push_back(i);
                 }
                 FILE_CHUNKS_INFO[gf] = chst;
             }
