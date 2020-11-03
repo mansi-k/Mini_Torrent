@@ -3,16 +3,16 @@
 pthread_t tid_ps;
 pthread_t tid_pr;
 
-//struct ChunkStruct {
-//    long totalchunks;
-//    char chunks[totalchunks];
-//};
+struct ChunkStruct {
+    string dpath;
+    set<int> fchunks;
+};
 
 pair<string,int> THIS_PEER_SOCK;
 vector<pair<string,int>> TRACK_SOCK_VEC;
 char MSG_BUFF[BUFFER_SIZE];
 string CURR_USER="";
-map<pair<string,string>,set<int>> FILE_CHUNKS_INFO;  //<gid,filename>
+map<pair<string,string>,ChunkStruct> FILE_CHUNKS_INFO;  //<gid,filename>
 
 
 void* serveRequest(void *args) {
@@ -201,11 +201,12 @@ int main(int argc,char ** argv) {
             string rspmsg = string(MSG_BUFF);
             if(rspmsg.find("is now uploaded to group") != string::npos) {
                 pair<string,string> gf = make_pair(rqst_vec[2],rqst_vec[1]);
-                set<int> chnks;
+                ChunkStruct chst;
+                chst.dpath = rqst_vec[1];
                 for(int i=0;i<totchunks;i++) {
-                    chnks.insert(i);
+                    chst.fchunks.insert(i);
                 }
-                FILE_CHUNKS_INFO[gf] = chnks;
+                FILE_CHUNKS_INFO[gf] = chst;
             }
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
