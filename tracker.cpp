@@ -33,12 +33,17 @@ struct DownRqstStruct {
     int port;
     string srcfile;
     string destp;
+    int totchunks;
 };
 map<string,GroupStruct> GROUP_INFO;
 map<pair<string,string>,FileStruct> FILE_INFO;  //<gid,filename>
 queue<DownRqstStruct> DOWN_RQST_Q;
 map<pair<string,pair<string,int>>,string> DOWN_RSPN;  //<filename,<ip,port>>
-
+struct DownlConfig {
+    int dl_sock;
+    DownRqstStruct down_rqst;
+    pair<pair<string,int>,vector<int>> chunks_from;
+};
 
 void setSocket(string trkfile) {
     fstream fs(trkfile,ios::in);
@@ -49,7 +54,21 @@ void setSocket(string trkfile) {
 }
 
 void* fileDownloader(void *args) {
-
+    DownlConfig down_config = *((DownlConfig *)args);
+    string chunks = bitvec_toString(down_config.chunks_from.second);
+    struct sockaddr_in cpeerSock;
+    memset(&cpeerSock, '\0', sizeof(cpeerSock));
+    cpeerSock.sin_addr.s_addr = inet_addr(down_config.chunks_from.first.first.c_str());
+    cpeerSock.sin_port = htons(down_config.chunks_from.first.second);
+    cpeerSock.sin_family = AF_INET;
+    string chnkmsg = to_string(down_config.down_rqst.totchunks)+"|"+chunks;
+    sendto(down_config.dl_sock,chnkmsg.c_str(),chunks.length()+1,0,(struct sockaddr*) &cpeerSock,sizeof(cpeerSock));
+    memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+    recvfrom(down_config.dl_sock, MSG_BUFF, BUFFER_SIZE, 0, (struct sockaddr*) &cpeerSock,(socklen_t *)(sizeof(cpeerSock)));
+    pair<string,pair<string,int>> drspn = make_pair(down_config.down_rqst.srcfile,make_pair(down_config.down_rqst.ip,down_config.down_rqst.port));
+    DOWN_RSPN[drspn] = MSG_BUFF;
+    memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+    pthread_exit(NULL);
 }
 
 void* configDownload(void *args) {
@@ -62,7 +81,7 @@ void* configDownload(void *args) {
             DOWN_RQST_Q.pop();
             int DlSock = socket(PF_INET,SOCK_STREAM, 0);
             if(DlSock < 0) {
-                perror("\nFailed to create Downloader socket ");
+                perror("\nFailed to create downloader socket ");
                 exit(1);
             }
             pair<string,string> gf = make_pair(dlrq.gid,dlrq.srcfile);
@@ -86,7 +105,7 @@ void* configDownload(void *args) {
                 }
             }
             for(auto apcit=active_peer_chunks.begin();apcit!=active_peer_chunks.end();apcit++) {
-                //connect with n request for chunk info
+                //connect n request for chunk info
                 struct sockaddr_in peerSock;
                 memset(&peerSock, '\0', sizeof(peerSock));
                 peerSock.sin_addr.s_addr = inet_addr(apcit->first.first.c_str());
@@ -101,6 +120,7 @@ void* configDownload(void *args) {
                 recv(DlSock,MSG_BUFF,BUFFER_SIZE,0);
                 vector<string> rmsg = split_string(MSG_BUFF,'|');  //fpath,bitvec
                 apcit->second = split_bitvector(rmsg[1],';',FILE_INFO[gf].totalchunks);
+                memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
             }
             // loop to choose chunks from each peer
             map<pair<string,int>,vector<int>> chunks_from;
@@ -122,17 +142,15 @@ void* configDownload(void *args) {
                     }
                 }
             }
-            struct DownlConfig {
-                DownRqstStruct down_rqst;
-                map<pair<string,int>,vector<int>> chunks_from;
-            } down_config;
+            DownlConfig down_config;
             down_config.down_rqst = dlrq;
-            down_config.chunks_from = chunks_from;
+            down_config.dl_sock = DlSock;
             int d=0;
             pthread_t downl_TID[chunks_from.size()];
             for(auto cfit=chunks_from.begin();cfit!=chunks_from.end();cfit++) {
+                down_config.chunks_from = make_pair(cfit->first,cfit->second);
                 if (pthread_create(&downl_TID[d++], NULL, fileDownloader, &down_config) != 0) {
-                    perror("\nFailed to create server request service thread ");
+                    perror("\nFailed to create downloader thread ");
                 }
             }
         }
@@ -358,6 +376,7 @@ string handle_download_file(string gid, string fname, string destp, string ipadr
             drs.port = portno;
             drs.srcfile = fname;
             drs.destp = destp;
+            drs.totchunks = itr->second.totalchunks;
             DOWN_RQST_Q.push(drs);
             status = "File "+fname+" will be downloaded soon\n";
         }
