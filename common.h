@@ -33,3 +33,14 @@ vector<string> split_string(string s,char d) {
     }
     return v;
 }
+
+vector<int> split_bitvector(string s,char d, int totchunks) {
+    vector<int> v;
+    v.resize(totchunks,0);
+    stringstream ss(s);
+    string temp;
+    while(getline(ss,temp,d)) {
+        v[stoi(temp)] = 1;
+    }
+    return v;
+}
