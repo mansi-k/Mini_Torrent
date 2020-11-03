@@ -278,8 +278,11 @@ int main(int argc,char ** argv) {
             send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
             cout << MSG_BUFF << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
 //            string rspmsg = string(MSG_BUFF);
-//            if(rspmsg.find("downloaded") != string::npos) {
+//            if(rspmsg.find("download complete") != string::npos) {
 //                pair<string,string> gf = make_pair(rqst_vec[2],rqst_vec[1]);
 //                set<int> chnks;
 //                for(int i=0;i<totchunks;i++) {
