@@ -42,7 +42,8 @@ map<pair<string,pair<string,int>>,string> DOWN_RSPN;  //<filename,<ip,port>>
 struct DownlConfig {
     int dl_sock;
     DownRqstStruct down_rqst;
-    pair<pair<string,int>,vector<int>> chunks_from;
+    pair<string,int> chunks_from;
+    vector<int> which_chunks;
 };
 
 void setSocket(string trkfile) {
@@ -54,24 +55,33 @@ void setSocket(string trkfile) {
 }
 
 void* fileDownloader(void *args) {
+    cout << "in fileDownloader" << endl;
     DownlConfig down_config = *((DownlConfig *)args);
-    string chunks = bitvec_toString(down_config.chunks_from.second);
+    cout << down_config.chunks_from.first << ":" << down_config.chunks_from.second << endl;
+    for(auto it=down_config.which_chunks.begin();it!=down_config.which_chunks.end();it++) {
+        cout << *it << " ";
+    }
+    cout << endl;
+    string chunks = bitvec_toString(down_config.which_chunks);
+    cout << chunks << endl;
     struct sockaddr_in cpeerSock;
     memset(&cpeerSock, '\0', sizeof(cpeerSock));
-    cpeerSock.sin_addr.s_addr = inet_addr(down_config.chunks_from.first.first.c_str());
-    cpeerSock.sin_port = htons(down_config.chunks_from.first.second);
+    cpeerSock.sin_addr.s_addr = inet_addr(down_config.chunks_from.first.c_str());
+    cpeerSock.sin_port = htons(down_config.chunks_from.second);
     cpeerSock.sin_family = AF_INET;
     string chnkmsg = to_string(down_config.down_rqst.totchunks)+"|"+chunks;
-    sendto(down_config.dl_sock,chnkmsg.c_str(),chunks.length()+1,0,(struct sockaddr*) &cpeerSock,sizeof(cpeerSock));
+    sendto(down_config.dl_sock,chnkmsg.c_str(),chnkmsg.length()+1,0,(struct sockaddr*) &cpeerSock,sizeof(cpeerSock));
     memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
     recvfrom(down_config.dl_sock, MSG_BUFF, BUFFER_SIZE, 0, (struct sockaddr*) &cpeerSock,(socklen_t *)(sizeof(cpeerSock)));
     pair<string,pair<string,int>> drspn = make_pair(down_config.down_rqst.srcfile,make_pair(down_config.down_rqst.ip,down_config.down_rqst.port));
     DOWN_RSPN[drspn] = MSG_BUFF;
     memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+    cout << "exiting fileDownloader" << endl;
     pthread_exit(NULL);
 }
 
 void* configDownload(void *args) {
+    cout << "in configDownload" << endl;
     while(true) {
         if(DOWN_RQST_Q.empty()) {
             continue;
@@ -91,7 +101,9 @@ void* configDownload(void *args) {
                     if(apit->second.ip == sit->first.first && apit->second.port == sit->first.second) {
                         vector<int> chkvec;
                         chkvec.resize(FILE_INFO[gf].totalchunks,0);
-                        active_peer_chunks[make_pair(dlrq.ip,dlrq.port)] = chkvec;
+//                        active_peer_chunks[make_pair(dlrq.ip,dlrq.port)] = chkvec;
+                        active_peer_chunks[make_pair(sit->first.first,sit->first.second)] = chkvec;
+                        cout << apit->first << " ";
                     }
                 }
             }
@@ -100,10 +112,18 @@ void* configDownload(void *args) {
                     if(apit->second.ip == lit->first.first && apit->second.port == lit->first.second) {
                         vector<int> chkvec;
                         chkvec.resize(FILE_INFO[gf].totalchunks,0);
-                        active_peer_chunks[make_pair(dlrq.ip,dlrq.port)] = chkvec;
+//                        active_peer_chunks[make_pair(dlrq.ip,dlrq.port)] = chkvec;
+                        active_peer_chunks[make_pair(lit->first.first,lit->first.second)] = chkvec;
+                        cout << apit->first << " ";
                     }
                 }
             }
+            cout << "\n" << "selected" << endl;
+            // only to display for testing
+            for(auto apcit=active_peer_chunks.begin();apcit!=active_peer_chunks.end();apcit++) {
+                cout << apcit->first.first << ":" << apcit->first.second << " " << endl;
+            }
+
             for(auto apcit=active_peer_chunks.begin();apcit!=active_peer_chunks.end();apcit++) {
                 //connect n request for chunk info
                 struct sockaddr_in peerSock;
@@ -118,15 +138,16 @@ void* configDownload(void *args) {
                 memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
                 send(DlSock,send_msg.c_str(),send_msg.length()+1,0);
                 recv(DlSock,MSG_BUFF,BUFFER_SIZE,0);
-                vector<string> rmsg = split_string(MSG_BUFF,'|');  //fpath,bitvec
-                apcit->second = split_bitvector(rmsg[1],';',FILE_INFO[gf].totalchunks);
+//                vector<string> rmsg = split_string(MSG_BUFF,'|');  //fpath,bitvec
+                cout << MSG_BUFF << endl;
+                apcit->second = split_bitvector(MSG_BUFF,';',FILE_INFO[gf].totalchunks);
                 memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
             }
             // loop to choose chunks from each peer
             map<pair<string,int>,vector<int>> chunks_from;
             int ci=0;
             int pcnt=0;
-            while(ci<FILE_INFO[gf].totalchunks-1) {
+            while(ci<FILE_INFO[gf].totalchunks) {
                 for(auto apcit=active_peer_chunks.begin();apcit!=active_peer_chunks.end();apcit++) {
                     if(pcnt==active_peer_chunks.size() && apcit->second[ci]==0) {
                         pair<string,pair<string,int>> p = make_pair(dlrq.srcfile,make_pair(dlrq.ip,dlrq.port));
@@ -142,19 +163,52 @@ void* configDownload(void *args) {
                     }
                 }
             }
-            DownlConfig down_config;
-            down_config.down_rqst = dlrq;
-            down_config.dl_sock = DlSock;
+            cout << "printing chunksfrom" << endl;
+            for(auto itr=chunks_from.begin();itr!=chunks_from.end();itr++) {
+                cout << itr->first.first << ":" << itr->first.second << " tc=" << itr->second.size() << " --> ";
+                for(auto jtr=itr->second.begin();jtr!=itr->second.end();jtr++) {
+                    cout << *jtr << " ";
+                }
+                cout << endl;
+            }
             int d=0;
+            cout << "print while assigning" << endl;
             pthread_t downl_TID[chunks_from.size()];
+            vector<DownlConfig> DlCfgVec;
             for(auto cfit=chunks_from.begin();cfit!=chunks_from.end();cfit++) {
-                down_config.chunks_from = make_pair(cfit->first,cfit->second);
-                if (pthread_create(&downl_TID[d++], NULL, fileDownloader, &down_config) != 0) {
+                cout << "using cfit" << " --> ";
+                for(auto jtr=cfit->second.begin();jtr!=cfit->second.end();jtr++) {
+                    cout << *jtr << " ";
+                }
+                cout << endl;
+                DownlConfig down_config;
+                down_config.down_rqst = dlrq;
+                down_config.dl_sock = DlSock;
+                down_config.chunks_from = cfit->first;
+                down_config.which_chunks = cfit->second;
+                cout << "using struct" << " --> ";
+                for(auto jtr=down_config.which_chunks.begin();jtr!=down_config.which_chunks.end();jtr++) {
+                    cout << *jtr << " ";
+                }
+                cout << endl;
+                DlCfgVec.push_back(down_config);
+//                if (pthread_create(&downl_TID[d++], NULL, fileDownloader, &down_config) != 0) {
+//                    perror("\nFailed to create downloader thread ");
+//                }
+            }
+            for(auto vsix=0;vsix<DlCfgVec.size();vsix++) {
+                cout << "using vector" << " --> ";
+                for(auto jtr=DlCfgVec[vsix].which_chunks.begin();jtr!=DlCfgVec[vsix].which_chunks.end();jtr++) {
+                    cout << *jtr << " ";
+                }
+                cout << endl;
+                if (pthread_create(&downl_TID[d++], NULL, fileDownloader, &DlCfgVec[vsix]) != 0) {
                     perror("\nFailed to create downloader thread ");
                 }
             }
         }
     }
+    cout << "exiting configDownload" << endl;
 }
 
 string handle_create_user(string user, string pswd, string ipadr, string portno) {
@@ -355,6 +409,7 @@ string handle_leave_group(string gid, string user) {
 }
 
 string handle_download_file(string gid, string fname, string destp, string ipadr, int portno, string user) {
+    cout << "in handle_download_file" << endl;
     string status;
     if(GROUP_INFO.find(gid)==GROUP_INFO.end()) {
         status = "Group "+gid+" does not exist\n";
@@ -381,16 +436,19 @@ string handle_download_file(string gid, string fname, string destp, string ipadr
             status = "File "+fname+" will be downloaded soon\n";
         }
     }
+    cout << "exiting handle_download_file" << endl;
     return status;
 }
 
 string wait_for_download(string fname, string ipadr, int portno) {
+    cout << "in wait_for_download" << endl;
     pair<string,pair<string,int>> drfs = make_pair(fname,make_pair(ipadr,portno));
-    while(DOWN_RSPN.find(drfs) == DOWN_RSPN.end()) {
+    while(DOWN_RSPN.empty() || DOWN_RSPN.find(drfs) == DOWN_RSPN.end()) {
         continue;
     }
     string status;
     status = DOWN_RSPN[drfs];
+    cout << "exiting wait_for_download" << endl;
     return status;
 }
 
