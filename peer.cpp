@@ -55,14 +55,19 @@ void* peerServer(void *args) {
             vector<string> rmsg = split_string(MSG_BUFF,'|');
             cout << "Request for gid="+rmsg[0]+" file="+rmsg[1] << endl;
             pair<string,string> pgf = make_pair(rmsg[0],rmsg[1]);
+            cout << FILE_CHUNKS_INFO[pgf].fchunks.size() << endl;
             string bvec = bitvec_toString(FILE_CHUNKS_INFO[pgf].fchunks);
+            cout << "after bvec" << endl;
             send(client_sock,bvec.c_str(),bvec.length(),0);
+            cout << "sent bvec" << endl;
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
             recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
             cout << MSG_BUFF << endl;
             rmsg = split_string(MSG_BUFF,'|');
             vector<int> chunks_tosend = split_bitvector(rmsg[1],';',stoi(rmsg[0]));
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+            string msg = "Download complete";
+            send(client_sock,msg.c_str(),msg.length(),0);
         }
     }
     pthread_exit(NULL);
@@ -205,15 +210,18 @@ int main(int argc,char ** argv) {
             struct stat filestatus;
             stat(rqst_vec[1].c_str(), &filestatus);
             long fsz = filestatus.st_size;
-            int totchunks = ceil(fsz/CHUNK_SIZE);
-            totchunks += fsz % CHUNK_SIZE;
+            int totchunks = ceil((float)fsz/CHUNK_SIZE);
             string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+CURR_USER+"|"+to_string(totchunks);
             send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
             cout << MSG_BUFF << endl;
             string rspmsg = string(MSG_BUFF);
+            int idx = rqst_vec[1].find_last_of('/');
+            string filename = rqst_vec[1].substr(idx+1,rqst_vec[1].length());
+            pair<string,string> gf = make_pair(rqst_vec[2],filename);
+            FILE_CHUNKS_INFO[gf].dpath = rqst_vec[1];
             if(rspmsg.find("is now uploaded to group") != string::npos) {
-                pair<string,string> gf = make_pair(rqst_vec[2],rqst_vec[1]);
+//                pair<string,string> gf = make_pair(rqst_vec[2],rqst_vec[1]);
                 ChunkStruct chst;
                 chst.dpath = rqst_vec[1];
                 for(int i=0;i<totchunks;i++) {
@@ -221,6 +229,11 @@ int main(int argc,char ** argv) {
                 }
                 FILE_CHUNKS_INFO[gf] = chst;
             }
+            cout << FILE_CHUNKS_INFO[gf].fchunks.size() << " " << fsz << " " << totchunks << endl;
+            for(auto itr=FILE_CHUNKS_INFO[gf].fchunks.begin();itr!=FILE_CHUNKS_INFO[gf].fchunks.end();itr++) {
+                cout << *itr << " ";
+            }
+            cout << endl;
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(cmd == "list_groups") {
@@ -280,15 +293,15 @@ int main(int argc,char ** argv) {
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(cmd == "download_file") {
-            if(rqst_vec.size()<3) {
-                cout << "Usage : download_file <group> <destination_path>" << endl;
+            if(rqst_vec.size()<4) {
+                cout << "Usage : download_file <group> <filename> <destination_path>" << endl;
                 continue;
             }
             if(CURR_USER=="") {
                 cout << "You are not logged in" << endl;
                 continue;
             }
-            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+CURR_USER;
+            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+rqst_vec[3]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+CURR_USER;
             send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
             cout << MSG_BUFF << endl;
