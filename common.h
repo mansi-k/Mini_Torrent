@@ -12,7 +12,8 @@
 
 #define BUFFER_SIZE 1024
 #define QLIMIT 32
-#define CHUNK_SIZE 1024*512
+//#define CHUNK_SIZE 1024*512
+#define CHUNK_SIZE 1024
 
 using namespace std;
 
@@ -45,12 +46,12 @@ vector<int> split_bitvector(string s,char d, int totchunks) {
     return v;
 }
 
-string bitvec_toString(vector<int> &v) {
+string bitvec_toString(vector<int> v) {
     string bitstr = to_string(*v.begin());
-    for(auto it=v.begin();it!=v.end(),i++) {
+    for(auto it=v.begin();it!=v.end();it++) {
         if(it == v.begin())
             continue;
-        bitstr = ";"+to_string(*it);
+        bitstr += ";"+to_string(*it);
     }
     return bitstr;
 }
