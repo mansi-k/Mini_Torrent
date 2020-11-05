@@ -121,6 +121,7 @@ void* peerServer(void *args) {
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
 //            string msg = "Download complete";
 //            send(client_sock,msg.c_str(),msg.length(),0);
+            close(client_sock);
         }
     }
     pthread_exit(NULL);
@@ -149,11 +150,13 @@ void* fileDownloader(void *args) {
     int rcvlen;
     string dfpath = down_config.destp+"/"+down_config.srcfile;
     cout << dfpath << endl;
+    pair<string,string> gf = make_pair(down_config.gid,down_config.srcfile);
 //    fstream fin;
 //    fin.open(dfpath.c_str(), fstream::in|fstream::out|fstream::trunc);
     FILE *fin = fopen(dfpath.c_str(),"wb+");
 //    fin.open(dfpath.c_str(), ios::out|ios::in|ios::binary);
     char CHUNK_BUFF[CHUNK_SIZE];
+
     for(int ci=0;ci<down_config.which_chunks.size();ci++) {
         string chnkno = to_string(down_config.which_chunks[ci]);
         sendto(down_config.dl_sock,chnkno.c_str(),chnkno.length()+1,0,(struct sockaddr*) &cpeerSock,sizeof(cpeerSock));
@@ -163,11 +166,12 @@ void* fileDownloader(void *args) {
         memset(&CHUNK_BUFF, 0, sizeof(CHUNK_BUFF));
         rcvlen = recvfrom(down_config.dl_sock, CHUNK_BUFF, CHUNK_SIZE, 0, (struct sockaddr*) &cpeerSock,(socklen_t *)(sizeof(cpeerSock)));
         cout << "Recieved chunk " << down_config.which_chunks[ci] << " " << rcvlen << endl;
-        if(rcvlen <= 0) {
-            perror("\nnot recieved");
-        }
+//        if(rcvlen <= 0) {
+//            perror("\nnot recieved");
+//        }
         string to_write = string(CHUNK_BUFF);
         fwrite(to_write.c_str(),sizeof(char),to_write.length(),fin);
+        FILE_CHUNKS_INFO[gf].fchunks.push_back(ci);
 //        CHUNK_BUFF = to_string(ci).c_str();
 //        fin.write(to_string(ci).c_str(),to_string(ci).length());
         // send info to tracker as leecher
@@ -181,18 +185,20 @@ void* fileDownloader(void *args) {
 //    recvfrom(down_config.dl_sock, MSG_BUFF, BUFFER_SIZE, 0, (struct sockaddr*) &cpeerSock,(socklen_t *)(sizeof(cpeerSock)));
 //    memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
     cout << "exiting fileDownloader" << endl;
+    close(down_config.dl_sock);
 //    pthread_exit(NULL);
 }
 
 void downloadConfigure(string gid, string filename, string destp, int totalchunks, string sha, vector<pair<string,int>> active_peer_chunks) {
     cout << "in downloadConfigure" << endl;
     map<pair<string,int>,vector<int>> chunks_peers_have;
-    int DlSock = socket(PF_INET,SOCK_STREAM, 0);
-    if(DlSock < 0) {
-        perror("\nFailed to create downloader socket ");
-        exit(1);
-    }
+    map<pair<string,int>,int> peer_DlSocks;
     for(auto apcit=active_peer_chunks.begin();apcit!=active_peer_chunks.end();apcit++) {
+        int DlSock = socket(PF_INET,SOCK_STREAM, 0);
+        if(DlSock < 0) {
+            perror("\nFailed to create downloader socket ");
+            exit(1);
+        }
         // connect & request for chunk info
         cout << "connecting " << apcit->first << ":" << apcit->second << endl;
         struct sockaddr_in peerSock;
@@ -210,6 +216,7 @@ void downloadConfigure(string gid, string filename, string destp, int totalchunk
         recv(DlSock,MSG_BUFF,BUFFER_SIZE,0);
         cout << MSG_BUFF << endl;
         chunks_peers_have[*apcit] = split_bitvector(MSG_BUFF,';',totalchunks);
+        peer_DlSocks[*apcit] = DlSock;
         memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
     }
     // loop to choose chunks from each peer
@@ -246,7 +253,7 @@ void downloadConfigure(string gid, string filename, string destp, int totalchunk
         down_config.srcfile = filename;
         down_config.gid = gid;
         down_config.destp = destp;
-        down_config.dl_sock = DlSock;
+        down_config.dl_sock = peer_DlSocks[cfit->first];
         down_config.chunks_from = cfit->first;
         down_config.which_chunks = cfit->second;
 //        cout << "using struct" << " --> ";
@@ -270,6 +277,7 @@ void downloadConfigure(string gid, string filename, string destp, int totalchunk
         }
         pthread_join(downl_TID[vsix],NULL);
     }
+//    close(DlSock);
     cout << "exiting downloadConfigure" << endl;
 }
 
@@ -504,8 +512,8 @@ int main(int argc,char ** argv) {
             }
             string fDestn = rqst_vec[3];
             string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+CURR_USER;
-            // total_chunks | SHA
             send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
+            // total_chunks | SHA
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
             cout << MSG_BUFF << endl;
             vector<string> vrmsg = split_string(MSG_BUFF,'|');
@@ -518,35 +526,36 @@ int main(int argc,char ** argv) {
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
             cout << "peers ";
             cout << MSG_BUFF << endl;
+            vrmsg.clear();
             vrmsg = split_string(MSG_BUFF,'|');
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
-//            ack = "send leechers";
-//            send(clientSock,ack.c_str(),ack.length()+1,0);
+            if(vrmsg.empty()) {
+                cout << "No peers available" << endl;
+                continue;
+            }
             vector<pair<string,int>> afpeers;
             for(auto it=vrmsg.begin();it!=vrmsg.end();it++) {
                 afpeers.push_back(split_address(*it));
             }
-            // leecher addresses
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
-//            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
-//            cout << "leechers ";
-//            cout << MSG_BUFF << endl;
-//            vrmsg = split_string(MSG_BUFF,'|');
-//            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
-//            for(auto it=vrmsg.begin();it!=vrmsg.end();it++) {
-//                afpeers.push_back(split_address(*it));
-//            }
-//            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            pair<string,string> gf = make_pair(rqst_vec[1],rqst_vec[2]);
+            FILE_CHUNKS_INFO[gf].dpath = rqst_vec[3];
+            string lchrq = "add_leecher|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+rqst_vec[3];
+            send(clientSock,lchrq.c_str(),lchrq.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
             downloadConfigure(rqst_vec[1],rqst_vec[2],rqst_vec[3],totchunks,sha,afpeers);
-//            string rspmsg = string(MSG_BUFF);
-//            if(rspmsg.find("download complete") != string::npos) {
-//                pair<string,string> gf = make_pair(rqst_vec[2],rqst_vec[1]);
-//                set<int> chnks;
-//                for(int i=0;i<totchunks;i++) {
-//                    chnks.insert(i);
-//                }
-//                FILE_CHUNKS_INFO[gf] = chnks;
-//            }
+            if(FILE_CHUNKS_INFO[gf].fchunks.size() == totchunks) {
+                cout << "Download complete" << endl;
+                string sedq = "add_seeder|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+rqst_vec[3];
+                send(clientSock,sedq.c_str(),sedq.length()+1,0);
+                recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+                cout << MSG_BUFF << endl;
+                memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+            }
+            else {
+                cout << "Incomplete download" << endl;
+            }
         }
         else if(cmd == "exit") {
             if(CURR_USER=="") {

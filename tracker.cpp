@@ -469,6 +469,7 @@ string handle_download_file(string gid, string fname, string user, int client_so
             fmsg = "";
             send(client_sock,fmsg.c_str(),fmsg.length(),0);
             status = "File "+fname+" information sent\n";
+            cout << status << endl;
 
 //            for(auto sit=itr->second.totalchunks)
 //            DownRqstStruct drs;
@@ -497,6 +498,21 @@ string wait_for_download(string fname, string ipadr, int portno) {
     status = DOWN_RSPN[drfs];
     cout << "exiting wait_for_download" << endl;
     return status;
+}
+
+string handle_add_leecher(string gid, string filename, string ipadr, string port, string destp) {
+    pair<string,string> gf = make_pair(gid,filename);
+    pair<string,int> lchinf = make_pair(ipadr,stoi(port));
+    FILE_INFO[gf].leechers[lchinf] = destp;
+    return "You are addded as leecher\n";
+}
+
+string handle_add_seeder(string gid, string filename, string ipadr, string port, string destp) {
+    pair<string,string> gf = make_pair(gid,filename);
+    pair<string,int> sedinf = make_pair(ipadr,stoi(port));
+    FILE_INFO[gf].leechers.erase(sedinf);
+    FILE_INFO[gf].seeders[sedinf] = destp;
+    return "You are now a seeder\n";
 }
 
 void* serveRequest(void *args) {
@@ -569,10 +585,18 @@ void* serveRequest(void *args) {
         else if(rcvd_cmd[0] == "download_file") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_download_file(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[5],client_sock);
-//            cout << send_msg << endl;
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(rcvd_cmd[0] == "add_leecher") {
+            cout << rcvd_cmd[0] << " request" << endl;
+            send_msg = handle_add_leecher(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4],rcvd_cmd[5]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
-//            send_msg = wait_for_download(rcvd_cmd[2],rcvd_cmd[4],stoi(rcvd_cmd[5]));
-//            send(client_sock,send_msg.c_str(),send_msg.length(),0);
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(rcvd_cmd[0] == "add_seeder") {
+            cout << rcvd_cmd[0] << " request" << endl;
+            send_msg = handle_add_seeder(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4],rcvd_cmd[5]);
+            send(client_sock,send_msg.c_str(),send_msg.length(),0);
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(rcvd_cmd[0] == "exit") {

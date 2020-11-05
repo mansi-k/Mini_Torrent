@@ -9,6 +9,7 @@
 #include <sstream>
 #include <sys/stat.h>
 #include <cmath>
+#include <unistd.h>
 
 #define BUFFER_SIZE 1024
 #define QLIMIT 32
@@ -27,6 +28,9 @@ pair<string,int> split_address(string addr) {
 
 vector<string> split_string(string s,char d) {
     vector<string> v;
+    if(s=="") {
+        return v;
+    }
     stringstream ss(s);
     string temp;
     while(getline(ss,temp,d)) {
