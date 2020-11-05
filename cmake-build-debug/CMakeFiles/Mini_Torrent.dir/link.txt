@@ -1,0 +1,1 @@
+/usr/bin/c++  -g   CMakeFiles/Mini_Torrent.dir/main.cpp.o  -o Mini_Torrent 

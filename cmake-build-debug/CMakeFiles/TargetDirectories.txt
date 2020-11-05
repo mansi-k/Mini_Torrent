@@ -1,0 +1,3 @@
+/home/mansi/IIITH/AOS/Assgn2/Mini_Torrent/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/home/mansi/IIITH/AOS/Assgn2/Mini_Torrent/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/mansi/IIITH/AOS/Assgn2/Mini_Torrent/cmake-build-debug/CMakeFiles/Mini_Torrent.dir
