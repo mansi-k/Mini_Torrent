@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <cmath>
 #include <unistd.h>
+#include <sys/file.h>
+//#include <fcntl.h>
 
 #define BUFFER_SIZE 1024
 #define QLIMIT 32
