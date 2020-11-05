@@ -569,8 +569,8 @@ void* serveRequest(void *args) {
         else if(rcvd_cmd[0] == "download_file") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_download_file(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[5],client_sock);
-            cout << send_msg << endl;
-//            send(client_sock,send_msg.c_str(),send_msg.length(),0);
+//            cout << send_msg << endl;
+            send(client_sock,send_msg.c_str(),send_msg.length(),0);
 //            send_msg = wait_for_download(rcvd_cmd[2],rcvd_cmd[4],stoi(rcvd_cmd[5]));
 //            send(client_sock,send_msg.c_str(),send_msg.length(),0);
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));

@@ -90,22 +90,35 @@ void* peerServer(void *args) {
             if(fp == NULL) {
                 perror("\nFile null");
             }
+//            ifstream fp(fpath, ifstream::binary);
+//            if(!fp.is_open()) {
+//                perror("\nFile null");
+//            }
             char CHUNK_BUFF[CHUNK_SIZE];
             int readsize, fs;
             cout << fpath << " " << chunks_tosend.size() << " " << pgf.second << endl;
             for(int ci=0;ci<chunks_tosend.size();ci++) {
+                memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
                 recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
+                memset(&CHUNK_BUFF, 0, sizeof(CHUNK_BUFF));
                 cout << "Request for chunk " << MSG_BUFF << " ........ " << "Sending chunk " << chunks_tosend[ci] << endl;
                 fs = fseek(fp,chunks_tosend[ci]*CHUNK_SIZE,SEEK_SET);
+//                fp.seekg(chunks_tosend[ci]*CHUNK_SIZE,ios::beg);
                 if(fs != 0) {
-                    cout << "fseek nonzero";
+                    perror("\nseek nonzero ");
                 }
-                readsize = fread(CHUNK_BUFF,sizeof(char),CHUNK_SIZE,fp);
-                send(client_sock,CHUNK_BUFF,readsize,0);
-                memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
-                memset(&CHUNK_BUFF, 0, sizeof(CHUNK_BUFF));
+                readsize = fread(&CHUNK_BUFF,sizeof(char),CHUNK_SIZE,fp);
+                cout << readsize << endl;
+//                cout << CHUNK_BUFF << endl;
+                if(readsize <= 0) {
+                    perror("\nnot read ");
+                }
+//                fp.read(CHUNK_BUFF,CHUNK_SIZE);
+                string testmsg = "hello";
+                send(client_sock,CHUNK_BUFF,CHUNK_SIZE,0);
             }
             cout << "All chunks sent" << endl;
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
 //            string msg = "Download complete";
 //            send(client_sock,msg.c_str(),msg.length(),0);
         }
@@ -136,23 +149,33 @@ void* fileDownloader(void *args) {
     int rcvlen;
     string dfpath = down_config.destp+"/"+down_config.srcfile;
     cout << dfpath << endl;
-    fstream fin;
-    fin.open(dfpath.c_str(), fstream::in|fstream::out|fstream::trunc);
+//    fstream fin;
+//    fin.open(dfpath.c_str(), fstream::in|fstream::out|fstream::trunc);
+    FILE *fin = fopen(dfpath.c_str(),"wb+");
+//    fin.open(dfpath.c_str(), ios::out|ios::in|ios::binary);
     char CHUNK_BUFF[CHUNK_SIZE];
     for(int ci=0;ci<down_config.which_chunks.size();ci++) {
         string chnkno = to_string(down_config.which_chunks[ci]);
         sendto(down_config.dl_sock,chnkno.c_str(),chnkno.length()+1,0,(struct sockaddr*) &cpeerSock,sizeof(cpeerSock));
-        fin.seekp(down_config.which_chunks[ci]*CHUNK_SIZE,ios::beg);
-        cout << "Downloading chunk " << down_config.which_chunks[ci] << " ........ ";
+        fseek(fin,down_config.which_chunks[ci]*CHUNK_SIZE,SEEK_SET);
+//        fin.seekp(down_config.which_chunks[ci]*CHUNK_SIZE,ios::beg);
+        cout << "Downloading chunk " << down_config.which_chunks[0] << " ........ ";
         memset(&CHUNK_BUFF, 0, sizeof(CHUNK_BUFF));
         rcvlen = recvfrom(down_config.dl_sock, CHUNK_BUFF, CHUNK_SIZE, 0, (struct sockaddr*) &cpeerSock,(socklen_t *)(sizeof(cpeerSock)));
-        cout << "Recieved chunk " << down_config.which_chunks[ci] << rcvlen << endl;
-        fin.write(CHUNK_BUFF,rcvlen);
+        cout << "Recieved chunk " << down_config.which_chunks[ci] << " " << rcvlen << endl;
+        if(rcvlen <= 0) {
+            perror("\nnot recieved");
+        }
+        string to_write = string(CHUNK_BUFF);
+        fwrite(to_write.c_str(),sizeof(char),to_write.length(),fin);
+//        CHUNK_BUFF = to_string(ci).c_str();
+//        fin.write(to_string(ci).c_str(),to_string(ci).length());
         // send info to tracker as leecher
     }
     memset(&CHUNK_BUFF, 0, sizeof(CHUNK_BUFF));
     memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
-    fin.close();
+    fclose(fin);
+//    fin.close();
 //    sem_post(&m);
 
 //    recvfrom(down_config.dl_sock, MSG_BUFF, BUFFER_SIZE, 0, (struct sockaddr*) &cpeerSock,(socklen_t *)(sizeof(cpeerSock)));
