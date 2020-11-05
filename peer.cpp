@@ -75,17 +75,31 @@ void* peerServer(void *args) {
             recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
             cout << MSG_BUFF << endl;
             rmsg = split_string(MSG_BUFF,'|');
-            vector<int> chunks_tosend = split_bitvector(rmsg[1],';',stoi(rmsg[0]));
+//            vector<int> chunks_tosend = split_bitvector(rmsg[1],';',stoi(rmsg[0]));
+            vector<int> chunks_tosend;
+            cout << rmsg[1] << endl;
+            vector<string> chkmsg = split_string(rmsg[1],';');
+            for(int i=0;i<chkmsg.size();i++) {
+                chunks_tosend.push_back(stoi(chkmsg[i]));
+                cout << chunks_tosend[i] << " ";
+            }
+            cout << endl;
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
-            string fpath = FILE_CHUNKS_INFO[pgf].dpath+"/"+pgf.second;
+            string fpath = FILE_CHUNKS_INFO[pgf].dpath;
             FILE *fp = fopen(fpath.c_str(),"rb");
+            if(fp == NULL) {
+                perror("\nFile null");
+            }
             char CHUNK_BUFF[CHUNK_SIZE];
-            int readsize;
-            cout << fpath << " " << chunks_tosend.size() << endl;
+            int readsize, fs;
+            cout << fpath << " " << chunks_tosend.size() << " " << pgf.second << endl;
             for(int ci=0;ci<chunks_tosend.size();ci++) {
                 recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
                 cout << "Request for chunk " << MSG_BUFF << " ........ " << "Sending chunk " << chunks_tosend[ci] << endl;
-                fseek(fp,chunks_tosend[ci]*CHUNK_SIZE,SEEK_SET);
+                fs = fseek(fp,chunks_tosend[ci]*CHUNK_SIZE,SEEK_SET);
+                if(fs != 0) {
+                    cout << "fseek nonzero";
+                }
                 readsize = fread(CHUNK_BUFF,sizeof(char),CHUNK_SIZE,fp);
                 send(client_sock,CHUNK_BUFF,readsize,0);
                 memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
@@ -121,8 +135,9 @@ void* fileDownloader(void *args) {
     char fChunk[CHUNK_SIZE];
     int rcvlen;
     string dfpath = down_config.destp+"/"+down_config.srcfile;
+    cout << dfpath << endl;
     fstream fin;
-    fin.open(dfpath.c_str(),ios::out|ios::in|ios::binary);
+    fin.open(dfpath.c_str(), fstream::in|fstream::out|fstream::trunc);
     char CHUNK_BUFF[CHUNK_SIZE];
     for(int ci=0;ci<down_config.which_chunks.size();ci++) {
         string chnkno = to_string(down_config.which_chunks[ci]);
@@ -131,7 +146,7 @@ void* fileDownloader(void *args) {
         cout << "Downloading chunk " << down_config.which_chunks[ci] << " ........ ";
         memset(&CHUNK_BUFF, 0, sizeof(CHUNK_BUFF));
         rcvlen = recvfrom(down_config.dl_sock, CHUNK_BUFF, CHUNK_SIZE, 0, (struct sockaddr*) &cpeerSock,(socklen_t *)(sizeof(cpeerSock)));
-        cout << "Recieved chunk " << down_config.which_chunks[ci] << endl;
+        cout << "Recieved chunk " << down_config.which_chunks[ci] << rcvlen << endl;
         fin.write(CHUNK_BUFF,rcvlen);
         // send info to tracker as leecher
     }
@@ -381,7 +396,8 @@ int main(int argc,char ** argv) {
             int idx = rqst_vec[1].find_last_of('/');
             string filename = rqst_vec[1].substr(idx+1,rqst_vec[1].length());
             pair<string,string> gf = make_pair(rqst_vec[2],filename);
-            FILE_CHUNKS_INFO[gf].dpath = rqst_vec[1];
+            FILE_CHUNKS_INFO[gf].dpath = rqst_vec[1].substr(0,idx);
+            cout << FILE_CHUNKS_INFO[gf].dpath << endl;
             if(rspmsg.find("is now uploaded to group") != string::npos) {
 //                pair<string,string> gf = make_pair(rqst_vec[2],rqst_vec[1]);
                 ChunkStruct chst;
