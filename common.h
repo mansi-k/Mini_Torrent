@@ -17,7 +17,7 @@
 #define BUFFER_SIZE 1024
 #define QLIMIT 32
 //#define CHUNK_SIZE 1024*512
-#define CHUNK_SIZE 1024
+#define CHUNK_SIZE 1024*16
 
 using namespace std;
 

@@ -322,14 +322,11 @@ int main(int argc,char ** argv) {
     }
     string tracker_file = argv[2];
     THIS_PEER_SOCK = split_address(argv[1]);
-//    cout << THIS_PEER_SOCK.first << " : " << THIS_PEER_SOCK.second << endl;
     fstream fs(tracker_file,ios::in);
     string tadr;
 //    int i=0;
     while(getline(fs,tadr)) {
         TRACK_SOCK_VEC.push_back(split_address(tadr));
-//        cout << TRACK_SOCK_VEC[i].first << " : " << TRACK_SOCK_VEC[i].second << endl;
-//        i++;
     }
     if(pthread_create(&tid_ps, NULL, peerServer, NULL)!= 0) {
         perror("Failed to create server thread\n");
@@ -341,8 +338,6 @@ int main(int argc,char ** argv) {
         exit(1);
     }
 
-//    cout << getpeername()
-
     struct sockaddr_in trackerSock;
     memset(&trackerSock, '\0', sizeof(trackerSock));
     trackerSock.sin_addr.s_addr = inet_addr(TRACK_SOCK_VEC[0].first.c_str());
@@ -352,22 +347,12 @@ int main(int argc,char ** argv) {
     if(connect(clientSock,(struct sockaddr*) &trackerSock,sizeof(trackerSock)) < 0) {
         perror("\nFailed to connect to tracker");
     }
-//    string send_msg;
-//    cin >> send_msg;
-//    if(send(clientSock,send_msg.c_str(),send_msg.length()+1,0) < 0) {
-//        perror("Send failed");
-//    }
-//    recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
-//    string msg = string(MSG_BUFF);
-//    cout << msg << endl;
 
     string rqst;
     while(true) {
         getline(cin,rqst);
-//        cout << rqst << endl;
         vector<string> rqst_vec = split_string(rqst,' ');
         string cmd = rqst_vec[0];
-//        cout << cmd << "." <<  endl;
         if(cmd == "create_user") {
             if(rqst_vec.size()<3) {
                 cout << "Usage : create_user <username> <password>" << endl;
@@ -452,7 +437,7 @@ int main(int argc,char ** argv) {
             struct stat filestatus;
             stat(rqst_vec[1].c_str(), &filestatus);
             long fsz = filestatus.st_size;
-            int totchunks = ceil((float)fsz/CHUNK_SIZE);
+            int totchunks = ceil((float)fsz/(CHUNK_SIZE));
             string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+CURR_USER+"|"+to_string(totchunks)+"|"+to_string(fsz);
             send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
