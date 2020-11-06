@@ -23,6 +23,7 @@ struct GroupStruct {
 struct FileStruct {
     string sha;
     int totalchunks;
+    long filesize;
     map<pair<string,int>,string> seeders;  //<<ip,port>,path>
     map<pair<string,int>,string> leechers; //<<ip,port>,path>
 };
@@ -295,7 +296,7 @@ string handle_join_group(string gid, string user) {
     return status;
 }
 
-string handle_upload_file(string filep, string gid, string ipadr, string port, string user, string nchunks) {
+string handle_upload_file(string filep, string gid, string ipadr, string port, string user, string nchunks, string fsize) {
     string status;
     if(ALL_PEERS.empty() || ALL_PEERS.find(user) == ALL_PEERS.end()) {
         status = user+" does not exist";
@@ -320,6 +321,7 @@ string handle_upload_file(string filep, string gid, string ipadr, string port, s
             pair<string,int> psock = make_pair(ipadr,portno);
             flst.seeders[psock] = filep;
             flst.totalchunks = nchk;
+            flst.filesize = stol(fsize);
             // calculate SHA1
             FILE_INFO[fg] = flst;
             status = "File "+filename+" is now uploaded to group "+gid+"\n";
@@ -425,7 +427,7 @@ string handle_download_file(string gid, string fname, string user, int client_so
         }
         else {
             string sha = "sha";
-            string fmsg = to_string(itr->second.totalchunks)+"|"+sha;
+            string fmsg = to_string(itr->second.totalchunks)+"|"+to_string(itr->second.filesize)+"|"+sha;
             send(client_sock,fmsg.c_str(),fmsg.length(),0);
             fmsg = "";
             vector<string> afpeers;
@@ -554,7 +556,7 @@ void* serveRequest(void *args) {
         }
         else if(rcvd_cmd[0] == "upload_file") {
             cout << rcvd_cmd[0] << " request" << endl;
-            send_msg = handle_upload_file(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4],rcvd_cmd[5],rcvd_cmd[6]);
+            send_msg = handle_upload_file(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4],rcvd_cmd[5],rcvd_cmd[6],rcvd_cmd[7]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
