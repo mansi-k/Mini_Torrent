@@ -14,10 +14,10 @@
 //#define _GNU_SOURCE
 #include <fcntl.h>
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 1024*4
 #define QLIMIT 32
 //#define CHUNK_SIZE 1024*512
-#define CHUNK_SIZE 1024*16
+#define CHUNK_SIZE 1024*32
 
 using namespace std;
 
