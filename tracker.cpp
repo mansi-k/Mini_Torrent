@@ -27,25 +27,9 @@ struct FileStruct {
     map<pair<string,int>,string> seeders;  //<<ip,port>,path>
     map<pair<string,int>,string> leechers; //<<ip,port>,path>
 };
-struct DownRqstStruct {
-    string uid;
-    string gid;
-    string ip;
-    int port;
-    string srcfile;
-    string destp;
-    int totchunks;
-};
 map<string,GroupStruct> GROUP_INFO;
 map<pair<string,string>,FileStruct> FILE_INFO;  //<gid,filename>
-queue<DownRqstStruct> DOWN_RQST_Q;
-map<pair<string,pair<string,int>>,string> DOWN_RSPN;  //<filename,<ip,port>>
-struct DownlConfig {
-    int dl_sock;
-    DownRqstStruct down_rqst;
-    pair<string,int> chunks_from;
-    vector<int> which_chunks;
-};
+
 
 void setSocket(string trkfile) {
     fstream fs(trkfile,ios::in);
@@ -249,12 +233,38 @@ string handle_stop_share(string gid, string file, string ipadr, string port, str
     return status;
 }
 
-string handle_leave_group(string gid, string user) {
-
+string handle_leave_group(string gid, string user, string ipadr, string port) {
+    string status;
+    cout << "in lg" << endl;
+    if(GROUP_INFO.find(gid)==GROUP_INFO.end()) {
+        status = "Group "+gid+" does not exist\n";
+    }
+    else if(find(GROUP_INFO[gid].members.begin(),GROUP_INFO[gid].members.end(),user)==GROUP_INFO[gid].members.end()) {
+        status = "You are not a member of group "+gid+"\n";
+    }
+    else {
+        pair<string,int> psock = make_pair(ipadr,stoi(port));
+        if(GROUP_INFO[gid].owner == user) {
+            status = "Admin cannot leave the group\n";
+        }
+        else {
+//            string st;
+            auto mitr = find(GROUP_INFO[gid].members.begin(),GROUP_INFO[gid].members.end(),user);
+            for(auto it=FILE_INFO.begin();it!=FILE_INFO.end();it++) {
+                if(it->first.first == gid) {
+                    cout << handle_stop_share(gid,it->first.second,ipadr,port,user);
+                }
+            }
+            GROUP_INFO[gid].members.erase(mitr);
+            status = "You are removed from the group\n";
+        }
+    }
+    cout << "exit lg" << endl;
+    return status;
 }
 
 string handle_download_file(string gid, string fname, string user, int client_sock) {
-    cout << "in handle_download_file" << endl;
+//    cout << "in handle_download_file" << endl;
     string status;
     if(GROUP_INFO.find(gid)==GROUP_INFO.end()) {
         status = "Group "+gid+" does not exist\n";
@@ -303,26 +313,16 @@ string handle_download_file(string gid, string fname, string user, int client_so
             }
             // send peer adddresses
             send(client_sock,fmsg.c_str(),fmsg.length(),0);
-            afpeers.clear();
-            fmsg = "";
-            send(client_sock,fmsg.c_str(),fmsg.length(),0);
+//            afpeers.clear();
+//            fmsg = "";
+//            send(client_sock,fmsg.c_str(),fmsg.length(),0);
             status = "File "+fname+" information sent\n";
             cout << status << endl;
+            return status;
         }
     }
-    cout << "exiting handle_download_file" << endl;
-    return status;
-}
-
-string wait_for_download(string fname, string ipadr, int portno) {
-    cout << "in wait_for_download" << endl;
-    pair<string,pair<string,int>> drfs = make_pair(fname,make_pair(ipadr,portno));
-    while(DOWN_RSPN.empty() || DOWN_RSPN.find(drfs) == DOWN_RSPN.end()) {
-        continue;
-    }
-    string status;
-    status = DOWN_RSPN[drfs];
-    cout << "exiting wait_for_download" << endl;
+    send(client_sock,status.c_str(),status.length(),0);
+//    cout << "exiting handle_download_file" << endl;
     return status;
 }
 
@@ -339,6 +339,13 @@ string handle_add_seeder(string gid, string filename, string ipadr, string port,
     FILE_INFO[gf].leechers.erase(sedinf);
     FILE_INFO[gf].seeders[sedinf] = destp;
     return "You are now a seeder\n";
+}
+
+string handle_remove_leecher(string gid, string filename, string ipadr, string port) {
+    pair<string,string> gf = make_pair(gid,filename);
+    pair<string,int> sedinf = make_pair(ipadr,stoi(port));
+    FILE_INFO[gf].leechers.erase(sedinf);
+    return "Removed from leechers\n";
 }
 
 void* serveRequest(void *args) {
@@ -404,7 +411,7 @@ void* serveRequest(void *args) {
         }
         else if(rcvd_cmd[0] == "leave_group") {
             cout << rcvd_cmd[0] << " request" << endl;
-            send_msg = handle_leave_group(rcvd_cmd[1],rcvd_cmd[2]);
+            send_msg = handle_leave_group(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4]);
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
@@ -425,6 +432,12 @@ void* serveRequest(void *args) {
             send(client_sock,send_msg.c_str(),send_msg.length(),0);
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
+        else if(rcvd_cmd[0] == "remove_leecher") {
+            cout << rcvd_cmd[0] << " request" << endl;
+            send_msg = handle_remove_leecher(rcvd_cmd[1],rcvd_cmd[2],rcvd_cmd[3],rcvd_cmd[4]);
+            send(client_sock,send_msg.c_str(),send_msg.length(),0);
+            memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
         else if(rcvd_cmd[0] == "exit") {
             cout << rcvd_cmd[0] << " request" << endl;
             send_msg = handle_logout(rcvd_cmd[1]);
@@ -442,7 +455,7 @@ int main(int argc,char ** argv) {
         return 0;
     }
     setSocket(argv[1]);
-    cout << "in server" << endl;
+//    cout << "in server" << endl;
     struct sockaddr_in serverSock;
     int socketfd = socket(PF_INET, SOCK_STREAM, 0);
     if(socketfd < 0)	//tcp -sock_stream  af_inet - ipv4

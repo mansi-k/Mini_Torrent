@@ -6,6 +6,7 @@ pthread_t tid_pr;
 
 struct ChunkStruct {
     string dpath;
+    long totchunks;
     vector<int> fchunks;
 };
 
@@ -28,7 +29,7 @@ map<pair<string,string>,ChunkStruct> FILE_CHUNKS_INFO;  //<gid,filename>
 sem_t m;
 
 void* peerServer(void *args) {
-    cout << "in server" << endl;
+//    cout << "in server" << endl;
     struct sockaddr_in serverSock;
     int socketfd = socket(PF_INET, SOCK_STREAM, 0);
     if(socketfd < 0) {
@@ -55,52 +56,72 @@ void* peerServer(void *args) {
     while(true) {
         if(client_sock = accept(socketfd, (struct sockaddr *) &client_addr, &addr_len)) {
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
-            recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
-            vector<string> rmsg = split_string(MSG_BUFF,'|');
-            cout << "Request for gid="+rmsg[0]+" file="+rmsg[1] << endl;
-            pair<string,string> pgf = make_pair(rmsg[0],rmsg[1]);
+            recv(client_sock, MSG_BUFF, BUFFER_SIZE, 0);
+            vector<string> rmsg = split_string(MSG_BUFF, '|');
+            cout << "Request for gid=" + rmsg[0] + " file=" + rmsg[1] << endl;
+            pair<string, string> pgf = make_pair(rmsg[0], rmsg[1]);
             cout << FILE_CHUNKS_INFO[pgf].fchunks.size() << endl;
             string bvec = bitvec_toString(FILE_CHUNKS_INFO[pgf].fchunks);
-            send(client_sock,bvec.c_str(),bvec.length(),0);
+            send(client_sock, bvec.c_str(), bvec.length(), 0);
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
-            recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
+            recv(client_sock, MSG_BUFF, BUFFER_SIZE, 0);
             cout << MSG_BUFF << endl;
-            rmsg = split_string(MSG_BUFF,'|');
+            rmsg = split_string(MSG_BUFF, '|');
             vector<int> chunks_tosend;
-            vector<string> chkmsg = split_string(rmsg[1],';');
-            for(int i=0;i<chkmsg.size();i++) {
+            vector<string> chkmsg = split_string(rmsg[1], ';');
+            for (int i = 0; i < chkmsg.size(); i++) {
                 chunks_tosend.push_back(stoi(chkmsg[i]));
 //                cout << chunks_tosend[i] << " ";
             }
-            cout << endl;
+//            cout << endl;
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
-            string fpath = FILE_CHUNKS_INFO[pgf].dpath+"/"+pgf.second;
-            FILE *fp = fopen(fpath.c_str(),"rb");
-            if(fp == NULL) {
+            string fpath = FILE_CHUNKS_INFO[pgf].dpath + "/" + pgf.second;
+            FILE *fp = fopen(fpath.c_str(), "rb");
+            if (fp == NULL) {
                 perror("\nFile null");
             }
             char CHUNK_BUFF[CHUNK_SIZE];
-            int readsize, fs;
+            long readsize, fs;
             cout << fpath << " " << chunks_tosend.size() << " " << pgf.second << endl;
-            for(int ci=0;ci<chunks_tosend.size();ci++) {
+//            for(long ci=0;ci<chunks_tosend.size();ci++) {
+//                memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
+//                recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
+//                memset(&CHUNK_BUFF, 0, sizeof(CHUNK_BUFF));
+////                cout << "Request for chunk " << MSG_BUFF << " ........ " << "Sending chunk " << chunks_tosend[ci] << " --> ";
+//                fs = fseek(fp,chunks_tosend[ci]*CHUNK_SIZE,SEEK_SET);
+//                if(fs != 0) {
+//                    perror("\nseek nonzero ");
+//                }
+//                readsize = fread(&CHUNK_BUFF,sizeof(char),CHUNK_SIZE,fp);
+////                cout << readsize << endl;
+////                cout << CHUNK_BUFF << endl;
+//                if(readsize <= 0) {
+//                    perror("\nnot read ");
+//                }
+//                send(client_sock,CHUNK_BUFF,readsize,0);
+//            }
+            while (true) {
                 memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
-                recv(client_sock,MSG_BUFF,BUFFER_SIZE,0);
                 memset(&CHUNK_BUFF, 0, sizeof(CHUNK_BUFF));
-//                cout << "Request for chunk " << MSG_BUFF << " ........ " << "Sending chunk " << chunks_tosend[ci] << " --> ";
-                fs = fseek(fp,chunks_tosend[ci]*CHUNK_SIZE,SEEK_SET);
-                if(fs != 0) {
-                    perror("\nseek nonzero ");
+                recv(client_sock, MSG_BUFF, BUFFER_SIZE, 0);
+//                cout << "Request for chunk " << MSG_BUFF << " ........ ";
+                if (string(MSG_BUFF) == "bye") {
+                    break;
                 }
-                readsize = fread(&CHUNK_BUFF,sizeof(char),CHUNK_SIZE,fp);
-                cout << readsize << endl;
-//                cout << CHUNK_BUFF << endl;
-                if(readsize <= 0) {
+                long cn = stol(MSG_BUFF);
+                fs = fseek(fp, cn * CHUNK_SIZE, SEEK_SET);
+                if (fs != 0) {
+                    perror("\nseek error ");
+                }
+                readsize = fread(&CHUNK_BUFF, sizeof(char), CHUNK_SIZE, fp);
+//                cout << "Sending chunk " << cn << "-->" << readsize << endl;
+//                cout << cn << "=" << readsize << "\t";
+                if (readsize < 0) {
                     perror("\nnot read ");
                 }
-                string testmsg = "hello";
-                send(client_sock,CHUNK_BUFF,readsize,0);
+                send(client_sock, CHUNK_BUFF, readsize, 0);
             }
-            cout << "All chunks sent" << endl;
+            cout << endl << "All chunks sent" << endl;
             memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
             close(client_sock);
         }
@@ -114,14 +135,15 @@ void* fileDownloader(void *args) {
     cout << down_config.chunks_from.first << ":" << down_config.chunks_from.second << endl;
     cout << endl;
     string chunks = bitvec_toString(down_config.which_chunks);
-    cout << chunks << endl;
-    struct sockaddr_in cpeerSock;
-    memset(&cpeerSock, '\0', sizeof(cpeerSock));
-    cpeerSock.sin_addr.s_addr = inet_addr(down_config.chunks_from.first.c_str());
-    cpeerSock.sin_port = htons(down_config.chunks_from.second);
-    cpeerSock.sin_family = AF_INET;
+//    struct sockaddr_in cpeerSock;
+//    memset(&cpeerSock, '\0', sizeof(cpeerSock));
+//    cpeerSock.sin_addr.s_addr = inet_addr(down_config.chunks_from.first.c_str());
+//    cpeerSock.sin_port = htons(down_config.chunks_from.second);
+//    cpeerSock.sin_family = AF_INET;
+//    sendto(down_config.dl_sock,chnkmsg.c_str(),chnkmsg.length()+1,0,(struct sockaddr*) &cpeerSock,sizeof(cpeerSock));
     string chnkmsg = to_string(down_config.totchunks)+"|"+chunks;
-    sendto(down_config.dl_sock,chnkmsg.c_str(),chnkmsg.length()+1,0,(struct sockaddr*) &cpeerSock,sizeof(cpeerSock));
+    cout << chnkmsg << endl;
+    send(down_config.dl_sock,chnkmsg.c_str(),chnkmsg.length()+1,0);
     memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
     sem_wait(&m);
     int rcvlen;
@@ -130,10 +152,10 @@ void* fileDownloader(void *args) {
     pair<string,string> gf = make_pair(down_config.gid,down_config.srcfile);
     if (FILE *file = fopen(dfpath.c_str(), "r")) {
         fclose(file);
-        cout << "file exists" << endl;
+//        cout << "file exists" << endl;
     }
     else {
-        cout << "file does not exist" << endl;
+//        cout << "file does not exist" << endl;
         FILE *fp = fopen(dfpath.c_str(),"w");
         if (fallocate(fileno(fp),0,0,down_config.file_size)!=0) {
             perror("\n fallocate : ");
@@ -141,20 +163,45 @@ void* fileDownloader(void *args) {
         fclose(fp);
     }
     FILE *fin = fopen(dfpath.c_str(),"rb+");
-    for(int ci=0;ci<down_config.which_chunks.size();ci++) {
+//    for(int ci=0;ci<down_config.which_chunks.size();ci++) {
+//        char CHUNK_BUFF[CHUNK_SIZE];
+//        memset(&CHUNK_BUFF, '\0', CHUNK_SIZE);
+//        string chnkno = to_string(down_config.which_chunks[ci]);
+//        send(down_config.dl_sock,chnkno.c_str(),chnkno.length()+1,0);
+////        cout << "Downloading chunk " << down_config.which_chunks[ci] << " ........ ";
+//        rcvlen = recv(down_config.dl_sock, CHUNK_BUFF, CHUNK_SIZE, 0);
+////        cout << "Recieved chunk " << down_config.which_chunks[ci] << " " << rcvlen << endl;
+////        cout << CHUNK_BUFF << endl;
+//        string to_write = string(CHUNK_BUFF);
+//        fseek(fin,down_config.which_chunks[ci]*CHUNK_SIZE,SEEK_SET);
+//        fwrite(CHUNK_BUFF,sizeof(char),rcvlen,fin);
+//        FILE_CHUNKS_INFO[gf].fchunks.push_back(down_config.which_chunks[ci]);
+//    }
+    long ci=0;
+    while(true) {
+        if(ci==down_config.which_chunks.size()) {
+            break;
+        }
         char CHUNK_BUFF[CHUNK_SIZE];
         memset(&CHUNK_BUFF, '\0', CHUNK_SIZE);
         string chnkno = to_string(down_config.which_chunks[ci]);
+//        cout << "Downloading chunk " << chnkno << " ........ ";
         send(down_config.dl_sock,chnkno.c_str(),chnkno.length()+1,0);
-//        cout << "Downloading chunk " << down_config.which_chunks[ci] << " ........ ";
         rcvlen = recv(down_config.dl_sock, CHUNK_BUFF, CHUNK_SIZE, 0);
+//        cout << ci << "=" << rcvlen << "  ";
 //        cout << "Recieved chunk " << down_config.which_chunks[ci] << " " << rcvlen << endl;
-//        cout << CHUNK_BUFF << endl;
-        string to_write = string(CHUNK_BUFF);
+        if(ci<down_config.which_chunks.size()-1 && rcvlen<down_config.file_size &&  rcvlen<CHUNK_SIZE) {
+            continue;
+//            string errmsg = "bad|"+to_string(down_config.which_chunks[ci]);
+//            send(down_config.dl_sock,errmsg.c_str(),errmsg.length()+1,0);
+        }
         fseek(fin,down_config.which_chunks[ci]*CHUNK_SIZE,SEEK_SET);
         fwrite(CHUNK_BUFF,sizeof(char),rcvlen,fin);
         FILE_CHUNKS_INFO[gf].fchunks.push_back(down_config.which_chunks[ci]);
+        ci++;
     }
+    string bye = "bye";
+    send(down_config.dl_sock,bye.c_str(),bye.length()+1,0);
     memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
     fclose(fin);
     sem_post(&m);
@@ -183,12 +230,12 @@ void downloadConfigure(string gid, string filename, string destp, int totalchunk
         if(connect(DlSock,(struct sockaddr*) &peerSock,sizeof(peerSock)) < 0) {
             perror("\nFailed to connect to peer");
         }
-        cout << "connected to " << apcit->first << ":" << apcit->second << " --> ";
+//        cout << "connected to " << apcit->first << ":" << apcit->second << " --> ";
         string send_msg = gid+"|"+filename;
         memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
         send(DlSock,send_msg.c_str(),send_msg.length()+1,0);
         recv(DlSock,MSG_BUFF,BUFFER_SIZE,0);
-        cout << MSG_BUFF << endl;
+//        cout << MSG_BUFF << endl;
         chunks_peers_have[*apcit] = split_bitvector(MSG_BUFF,';',totalchunks);
         peer_DlSocks[*apcit] = DlSock;
         memset(&MSG_BUFF, 0, sizeof(MSG_BUFF));
@@ -374,12 +421,13 @@ int main(int argc,char ** argv) {
             if(rspmsg.find("is now uploaded to group") != string::npos) {
                 ChunkStruct chst;
                 chst.dpath = rqst_vec[1].substr(0,idx);
+                chst.totchunks = totchunks;
                 for(int i=0;i<totchunks;i++) {
                     chst.fchunks.push_back(i);
                 }
                 FILE_CHUNKS_INFO[gf] = chst;
             }
-            cout << FILE_CHUNKS_INFO[gf].fchunks.size() << " " << fsz << " " << totchunks << endl;
+            cout << "File-size: " << fsz << "\tTotal-chunks: " << totchunks << endl;
 //            for(auto itr=FILE_CHUNKS_INFO[gf].fchunks.begin();itr!=FILE_CHUNKS_INFO[gf].fchunks.end();itr++) {
 //                cout << *itr << " ";
 //            }
@@ -427,21 +475,6 @@ int main(int argc,char ** argv) {
             cout << MSG_BUFF << endl;
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
-        else if(cmd == "leave_group") {
-            if(rqst_vec.size()<2) {
-                cout << "Usage : leave_group <groupname>" << endl;
-                continue;
-            }
-            if(CURR_USER=="") {
-                cout << "You are not logged in" << endl;
-                continue;
-            }
-            string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+CURR_USER;
-            send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
-            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
-            cout << MSG_BUFF << endl;
-            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
-        }
         else if(cmd == "download_file") {
             if(rqst_vec.size()<4) {
                 cout << "Usage : download_file <group> <filename> <destination_path>" << endl;
@@ -451,11 +484,21 @@ int main(int argc,char ** argv) {
                 cout << "You are not logged in" << endl;
                 continue;
             }
+            pair<string,string> chkgf = make_pair(rqst_vec[1],rqst_vec[2]);
+            if(FILE_CHUNKS_INFO.find(chkgf)!=FILE_CHUNKS_INFO.end()) {
+                cout << "You already have the file" << endl;
+                continue;
+            }
             string fDestn = rqst_vec[3];
             string cmd_params = rqst_vec[0]+"|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+CURR_USER;
             send(clientSock,cmd_params.c_str(),cmd_params.length()+1,0);
             // total_chunks | file_size | SHA
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            if(string(MSG_BUFF).find("is not shared in group") != string::npos) {
+                cout << MSG_BUFF << endl;
+                memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+                continue;
+            }
             cout << MSG_BUFF << endl;
             vector<string> vrmsg = split_string(MSG_BUFF,'|');
             int totchunks = stoi(vrmsg[0]);
@@ -481,6 +524,7 @@ int main(int argc,char ** argv) {
             memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
             pair<string,string> gf = make_pair(rqst_vec[1],rqst_vec[2]);
             FILE_CHUNKS_INFO[gf].dpath = rqst_vec[3];
+            FILE_CHUNKS_INFO[gf].totchunks = totchunks;
             string lchrq = "add_leecher|"+rqst_vec[1]+"|"+rqst_vec[2]+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second)+"|"+rqst_vec[3];
             send(clientSock,lchrq.c_str(),lchrq.length()+1,0);
             recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
@@ -493,11 +537,46 @@ int main(int argc,char ** argv) {
                 send(clientSock,sedq.c_str(),sedq.length()+1,0);
                 recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
                 cout << MSG_BUFF << endl;
-                memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
             }
             else {
-                cout << "Incomplete download" << endl;
+                string rlmsg = "remove_leecher|"+gf.first+"|"+gf.second+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second);
+                send(clientSock,rlmsg.c_str(),rlmsg.length()+1,0);
+                recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+                cout << MSG_BUFF << endl;
+
             }
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
+        }
+        else if(cmd == "show_downloads") {
+            if(FILE_CHUNKS_INFO.empty()) {
+                cout << "No files downloaded" << endl;
+                continue;
+            }
+            for(auto itr=FILE_CHUNKS_INFO.begin();itr!=FILE_CHUNKS_INFO.end();itr++) {
+                if(itr->second.totchunks == itr->second.fchunks.size()) {
+                    cout << "C  ";
+                }
+                else {
+                    cout << "D  ";
+                }
+                cout << itr->first.first << "  " << itr->first.second << endl;
+            }
+        }
+        else if(cmd == "leave_group") {
+            if(rqst_vec.size()<2) {
+                cout << "Usage : leave_group <group>" << endl;
+                continue;
+            }
+            if(CURR_USER=="") {
+                cout << "You are not logged in" << endl;
+                continue;
+            }
+            string rqmsg = rqst_vec[0]+"|"+rqst_vec[1]+"|"+CURR_USER+"|"+THIS_PEER_SOCK.first+"|"+to_string(THIS_PEER_SOCK.second);
+//            cout << "msg=" << rqmsg << endl;
+            send(clientSock,rqmsg.c_str(),rqmsg.length()+1,0);
+            recv(clientSock,MSG_BUFF,BUFFER_SIZE,0);
+            cout << MSG_BUFF << endl;
+            memset(MSG_BUFF, 0, sizeof(MSG_BUFF));
         }
         else if(cmd == "exit") {
             if(CURR_USER=="") {
